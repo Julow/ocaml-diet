@@ -35,6 +35,8 @@ module type INTERVAL_SET = sig
     val y: interval -> elt
   end
   type t
+  val equal: t -> t -> bool
+  val compare: t -> t -> int
   val pp: Format.formatter -> t -> unit
   val empty: t
   val is_empty: t -> bool
@@ -112,6 +114,32 @@ module Make(Elt: ELT) = struct
     | Empty
     | Node: node -> t
   and node = { x: elt; y: elt; l: t; r: t; h: int; cardinal: elt }
+
+  type enum = End | More of interval * t * enum
+
+  let rec cons_enum t enum =
+    match t with
+    | Empty -> enum
+    | Node {x; y; l; r; _} -> cons_enum l (More ((x, y), r, enum))
+
+  let compare_with_invariant (x, y) (x', y') =
+    if eq x x' && eq y y' then 0
+    else if y < x' then -1
+    else 1
+
+  let rec compare_aux enum enum' =
+    match enum, enum' with
+    | End, End -> 0
+    | End, _ -> -1
+    | _, End -> 1
+    | More (interval, r, enum), More (interval', r', enum') ->
+      (match compare_with_invariant interval interval' with
+       | 0 -> compare_aux (cons_enum r enum) (cons_enum r' enum')
+       | c -> c)
+
+  let compare t t' = compare_aux (cons_enum t End) (cons_enum t' End)
+
+  let equal t t' = compare t t' = 0
 
   let rec pp fmt = function
     | Empty -> Format.fprintf fmt "Empty"
@@ -625,6 +653,28 @@ cardinal: 4|}
     in
     assert (String.trim expected = got)
 
+  let test_equal () =
+    let open IntDiet in
+    let make l = List.fold_left (fun diet (a, b) -> IntDiet.add (Interval.make a b) diet) empty l in
+    assert (equal (make []) (make []));
+    assert (equal (make [(1, 2)]) (make [(1, 2)]));
+    assert (equal (make [(1, 2); (4, 5)]) (make [(4, 5); (1, 2)]));
+    assert
+      (equal
+         (make [(7, 8); (1, 2); (10, 11); (4, 5); (13, 14)])
+         (make [(7, 8); (4, 5); (13, 14); (1, 2); (10, 11)]));
+    assert
+      (equal
+         (make [(4, 5); (1, 2); (10, 11); (7, 8)])
+         (make [(7, 8); (4, 5); (10, 11); (1, 2)]));
+    assert
+      (equal
+         (make [(7, 8); (4, 5); (1, 2)])
+         (make [(1, 2); (7, 8); (4, 5)]));
+    assert (not (equal (make [(1, 2)]) (make [])));
+    assert (not (equal (make [(1, 2)]) (make [(4, 5)])));
+    ()
+
   let all = [
     "adding an element to the right", test_add_1;
     "removing an element on the left", test_remove_1;
@@ -637,5 +687,6 @@ cardinal: 4|}
     "intersection", test_operator IntSet.inter IntDiet.inter;
     "finding the next gap", test_find_next;
     "printer", test_printer;
+    "equality", test_equal;
   ]
 end
