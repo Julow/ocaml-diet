@@ -124,7 +124,7 @@ module Make(Elt: ELT) = struct
 
   let compare_with_invariant a b =
     if eq a.x b.x && eq a.y b.y then 0
-    else if b.y < b.x then -1
+    else if a.y < b.x then -1
     else 1
 
   let rec compare_aux enum enum' =
